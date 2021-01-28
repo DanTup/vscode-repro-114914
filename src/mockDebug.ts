@@ -314,10 +314,8 @@ export class MockDebugSession extends LoggingDebugSession {
 
 		response.body = {
 			stackFrames: stk.frames.map(f => {
-				const sf = new StackFrame(f.index, f.name, this.createSource(f.file), this.convertDebuggerLineToClient(f.line));
-				if (typeof f.column === 'number') {
-					sf.column = this.convertDebuggerColumnToClient(f.column);
-				}
+				const hasSource = startFrame + f.index > 2;
+				const sf = new StackFrame(f.index, f.name, hasSource ? this.createSource(f.file) : undefined, 0, 0);
 				return sf;
 			}),
 			//no totalFrames: 				// VS Code has to probe/guess. Should result in a max. of two requests
