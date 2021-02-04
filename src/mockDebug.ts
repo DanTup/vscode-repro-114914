@@ -128,6 +128,8 @@ export class MockDebugSession extends LoggingDebugSession {
 		// build and return the capabilities of this debug adapter:
 		response.body = response.body || {};
 
+		response.body.supportsDelayedStackTraceLoading = true;
+
 		// the adapter implements the configurationDoneRequest.
 		response.body.supportsConfigurationDoneRequest = true;
 
@@ -304,22 +306,99 @@ export class MockDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 
-	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
-
+	protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): Promise<void> {
 		const startFrame = typeof args.startFrame === 'number' ? args.startFrame : 0;
 		const maxLevels = typeof args.levels === 'number' ? args.levels : 1000;
 		const endFrame = startFrame + maxLevels;
 
-		const stk = this._runtime.stack(startFrame, endFrame);
+		// Make requests for non-top-frame slow.
+		if (maxLevels > 1) {
+			console.log(`Returning slowly because asked for frames ${startFrame}-${startFrame+maxLevels}`);
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+		} else {
+			console.log(`Returning quickly because asked for frames ${startFrame}-${startFrame+maxLevels}`);
+		}
+
+		const pathSDK = this.convertDebuggerPathToClient('/Users/danny/Dev/vscode-repros/vscode-repro-114914/sampleworkspace/file_sdk.md');
+		const pathUser = this.convertDebuggerPathToClient('/Users/danny/Dev/vscode-repros/vscode-repro-114914/sampleworkspace/file_user.md');
+
+		const frames: DebugProtocol.StackFrame[] = [
+			{
+				"id": 2,
+				"source": {
+					"name": "package:test_api/…/frontend/expect.dart",
+					"path": pathSDK,
+					"sourceReference": 0,
+					"origin": "from Pub packages",
+					"presentationHint": "deemphasize"
+				},
+				"line": 1,
+				"column": 1,
+				"name": "fail"
+			},
+			{
+				"id": 3,
+				"source": {
+					"name": "package:test_api/…/frontend/expect.dart",
+					"path": pathSDK,
+					"sourceReference": 0,
+					"origin": "from Pub packages",
+					"presentationHint": "deemphasize"
+				},
+				"line": 1,
+				"column": 1,
+				"name": "_expect"
+			},
+			{
+				"id": 4,
+				"source": {
+					"name": "package:test_api/…/frontend/expect.dart",
+					"path": pathSDK,
+					"sourceReference": 0,
+					"origin": "from Pub packages",
+					"presentationHint": "deemphasize"
+				},
+				"line": 1,
+				"column": 1,
+				"name": "expect"
+			},
+			{
+				"id": 5,
+				"source": {
+					"name": "test/tree_test.dart",
+					"path": pathUser,
+					"sourceReference": 0,
+				},
+				"line": 1,
+				"column": 1,
+				"name": "main.<anonymous closure>.<anonymous closure>"
+			},
+			{
+				"id": 6,
+				"source": {
+					"name": "package:test_api/…/backend/declarer.dart",
+					"path": pathSDK,
+					"sourceReference": 0,
+					"origin": "from Pub packages",
+					"presentationHint": "deemphasize"
+				},
+				"line": 1,
+				"column": 1,
+				"name": "Declarer.test.<anonymous closure>.<anonymous closure>"
+			},
+			{
+				"id": 7,
+				"line": 1,
+				"column": 1,
+				"name": "<asynchronous gap>",
+				"presentationHint": "label"
+			},
+		];
 
 		response.body = {
-			stackFrames: stk.frames.map(f => {
-				const hasSource = startFrame + f.index > 2;
-				const sf = new StackFrame(f.index, f.name, hasSource ? this.createSource(f.file) : undefined, 0, 0);
-				return sf;
-			}),
+			stackFrames: frames.slice(startFrame, endFrame < frames.length ? endFrame : frames.length),
 			//no totalFrames: 				// VS Code has to probe/guess. Should result in a max. of two requests
-			totalFrames: stk.count			// stk.count is the correct size, should result in a max. of two requests
+			totalFrames: 4			// stk.count is the correct size, should result in a max. of two requests
 			//totalFrames: 1000000 			// not the correct size, should result in a max. of two requests
 			//totalFrames: endFrame + 20 	// dynamically increases the size with every requested chunk, results in paging
 		};
